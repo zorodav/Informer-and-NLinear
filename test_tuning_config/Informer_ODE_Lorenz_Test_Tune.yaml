@@ -1,0 +1,80 @@
+dataset:
+  name: Lorenz_Official
+  pair_id: [1]  # Changed to a list to match the expected format in `_construct_output_dir`
+
+hyperparameters:
+  train_split:
+    type: uniform
+    lower_bound: 0.7
+    upper_bound: 0.9
+  method:
+    type: choice
+    choices: ["default", "advanced"]
+  layers:
+    type: randint
+    lower_bound: 1
+    upper_bound: 5
+  hidden_size:
+    type: randint
+    lower_bound: 128
+    upper_bound: 512
+
+model:
+  name: Informer
+  n_trials: 50  # Number of trials for hyperparameter tuning
+  parameters:
+    enc_in: 3
+    dec_in: 3
+    c_out: 3
+    embed_type: 1
+    output_attention: false
+    seq_len: 29
+    label_len: 29
+    pred_len: 10
+    factor: 5
+    d_model: 512
+    n_heads: 8
+    e_layers: 2
+    d_layers: 1
+    dropout: 0.1
+
+training:
+  is_training: true
+  iterations: 1
+  train_only: false
+  do_predict: false
+
+use_gpu: true
+gpu: 0
+use_multi_gpu: false
+devices: "0"
+
+learning_rate: 0.001
+batch_size: 32
+weight_decay: 0.0001
+
+log_interval: 50
+save_model: true
+model_save_path: "./checkpoints"
+
+root_path: "./data"
+embed: timeF
+freq: "m"
+features: "M"
+target: "target"
+seq_len: 29
+label_len: 29
+pred_len: 10
+embed_type: 1
+checkpoints: "./checkpoints"
+patience: 10
+num_workers: 4
+train_epochs: 10
+use_amp: false
+output_attention: false
+e_layers: 2
+d_ff: 512
+activation: gelu
+distil: false
+lradj: "type1"
+test_flop: false

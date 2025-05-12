@@ -1,0 +1,82 @@
+dataset:
+  name: ODE_Lorenz
+  pair_id: [1]  # Changed to a list to match the expected format in ModelTuner
+
+model:
+  name: NLinear
+  parameters:
+    enc_in: 3
+    dec_in: 3
+    c_out: 3
+    seq_len: 29
+    label_len: 29
+    pred_len: 10
+    factor: 5
+    d_model: 512
+    n_heads: 8
+    e_layers: 2
+    d_layers: 1
+    dropout: 0.1
+  n_trials: 10  # Added for hyperparameter tuning
+
+training:
+  is_training: true
+  iterations: 10
+  train_only: false
+  do_predict: false
+
+# GPU settings
+use_gpu: True
+gpu: 0
+use_multi_gpu: false
+devices: "0"
+
+optimization:
+  learning_rate: 0.001
+  batch_size: 32
+  weight_decay: 0.0001
+
+logging:
+  log_interval: 50
+  save_model: true
+  model_save_path: "./checkpoints"
+
+# Data loading and additional settings
+root_path: "./data"
+data_path: "ODE_Lorenz.csv"
+embed: timeF
+freq: "15min"
+features: "M"
+target: "target"
+seq_len: 29
+label_len: 29
+pred_len: 10
+num_workers: 4
+
+# Hyperparameter tuning
+hyperparameters:
+  learning_rate:
+    type: loguniform
+    lower_bound: 0.00001
+    upper_bound: 0.01
+  batch_size:
+    type: choice
+    choices: [16, 32, 64, 128]
+  dropout:
+    type: uniform
+    lower_bound: 0.0
+    upper_bound: 0.5
+  d_model:
+    type: choice
+    choices: [128, 256, 512]
+  n_heads:
+    type: choice
+    choices: [4, 8, 16]
+  e_layers:
+    type: randint
+    lower_bound: 1
+    upper_bound: 4
+  d_layers:
+    type: randint
+    lower_bound: 1
+    upper_bound: 3

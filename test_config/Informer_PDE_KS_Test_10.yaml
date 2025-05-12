@@ -1,0 +1,69 @@
+dataset:
+  name: PDE_KS
+  pair_id: 10          # Run on all available sub-datasets
+
+model:
+  name: Informer
+  parameters:
+    enc_in: 1024       # number of raw input features
+    dec_in: 1024
+    c_out: 1024        # number of target features
+    seq_len: 96
+    label_len: 48
+    pred_len: 48
+    factor: 5
+    d_model: 4      # common embedding dimension
+    n_heads: 2
+    e_layers: 2
+    d_layers: 1
+    dropout: 0.1
+
+training:
+  is_training: true         # Whether to run the training loop
+  iterations: 1            # Number of training iterations
+  train_only: false         # If true, only train without testing
+  do_predict: false         # If true, run predictions after training
+
+# GPU settings
+use_gpu: True               # Whether to use GPU for training
+gpu: 0                      # GPU index to use
+use_multi_gpu: false        # Whether to use multiple GPUs
+devices: "0"                # List of GPU device IDs (as a string)
+
+# Optimization parameters
+learning_rate: 0.001
+batch_size: 32              # Batch size for training/data loading
+weight_decay: 0.0001
+
+# Logging parameters
+log_interval: 50
+save_model: true
+model_save_path: "./checkpoints"
+
+# Data loading and additional settings
+root_path: "./data"         # Root directory of your data
+embed: timeF                # Time encoding method (e.g., timeF)
+freq: "t"                   # Frequency of your data (e.g., 15min, 1H, etc.)
+features: "M"               # Feature type (e.g., "M" for multivariate)
+target: "target"            # Target column name in your dataset
+seq_len: 96               # Should match model.parameters.seq_len
+label_len: 48             # Should match model.parameters.label_len
+pred_len: 48              # Should match model.parameters.pred_len
+embed_type: 1
+# Others
+checkpoints: "./checkpoints"
+patience: 10
+num_workers: 4            # Number of worker threads for DataLoader
+train_epochs: 10       # Number of training epochs
+use_amp: false         # Whether to use automatic mixed precision (AMP) for training
+output_attention: false  # Whether to output attention weights
+e_layers: 2  # Number of encoder layers
+
+d_ff: 512  # Feedforward network dimension
+
+activation: gelu  # Activation function (e.g., relu, gelu, etc.)
+
+distil: false  # Whether to use distillation
+
+lradj: "type1"  # Learning rate adjustment type (e.g., type1, type2, etc.)
+test_flop: false  # Whether to test FLOPs (Floating Point Operations per second)
