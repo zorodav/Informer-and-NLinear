@@ -1,5 +1,5 @@
 dataset:
-  name: PDE_KS
+  name: KS_Official
   pair_id: 2          # Run on all available sub-datasets
 
 model:

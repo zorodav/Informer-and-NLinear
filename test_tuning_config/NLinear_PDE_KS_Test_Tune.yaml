@@ -1,29 +1,82 @@
 dataset:
   name: KS_Official
-  pair_id: [1] # Run on all available sub-datasets
+  pair_id: [1]
 
 model:
   name: NLinear
   parameters:
-    enc_in: 1024       # number of raw input features
+    enc_in: 1024
     dec_in: 1024
-    c_out: 1024        # number of target features
+    c_out: 1024
     seq_len: 29
-    label_len: 29
-    pred_len: 10
+    label_len: 25
+    pred_len: 4
     factor: 5
-    d_model: 4      # common embedding dimension
-    n_heads: 2
+    d_model: 512
+    n_heads: 8
     e_layers: 2
     d_layers: 1
     dropout: 0.1
-  n_trials: 50         # Number of trials for hyperparameter tuning
+  n_trials: 10
 
 training:
-  is_training: true         # Whether to run the training loop
-  iterations: 1            # Number of training iterations
-  train_only: false         # If true, only train without testing
-  do_predict: false         # If true, run predictions after training
+  is_training: true
+  iterations: 1
+  train_only: false
+  do_predict: false
+
+use_gpu: true
+gpu: 0
+use_multi_gpu: false
+devices: "0"
+
+optimization:
+  learning_rate: 0.001
+  batch_size: 32
+  weight_decay: 0.0001
+
+logging:
+  log_interval: 50
+  save_model: true
+  model_save_path: "./checkpoints"
+
+root_path: "./data"
+data_path: "ODE_Lorenz.csv"
+embed: timeF
+freq: "m"
+features: "M"
+target: "target"
+seq_len: 29
+label_len: 29
+pred_len: 5
+embed_type: 1
+checkpoints: "./checkpoints"
+patience: 10
+num_workers: 4
+train_epochs: 10
+use_amp: false
+output_attention: false
+activation: gelu
+distil: false
+lradj: "type1"
+test_flop: false
+individual: false
+
+hyperparameters:
+  learning_rate:
+    type: loguniform
+    lower_bound: 1e-5
+    upper_bound: 1e-2
+  batch_size:
+    type: choice
+    choices: [16, 32, 64]
+  d_model:
+    type: choice
+    choices: [128, 256, 512]
+  dropout:
+    type: uniform
+    lower_bound: 0.0
+    upper_bound: 0.5
 
 # GPU settings
 use_gpu: True               # Whether to use GPU for training
@@ -33,7 +86,7 @@ devices: "0"                # List of GPU device IDs (as a string)
 
 # Optimization parameters
 learning_rate: 0.001
-batch_size: 32              # Batch size for training/data loading
+batch_size: 64              # Batch size for training/data loading
 weight_decay: 0.0001
 
 # Logging parameters
@@ -48,8 +101,8 @@ freq: "t"                   # Frequency of your data (e.g., 15min, 1H, etc.)
 features: "M"               # Feature type (e.g., "M" for multivariate)
 target: "target"            # Target column name in your dataset
 seq_len: 29               # Should match model.parameters.seq_len
-label_len: 29             # Should match model.parameters.label_len
-pred_len: 10              # Should match model.parameters.pred_len
+label_len: 25             # Should match model.parameters.label_len
+pred_len: 4              # Should match model.parameters.pred_len
 embed_type: 1
 # Others
 checkpoints: "./checkpoints"
@@ -64,34 +117,7 @@ d_ff: 512  # Feedforward network dimension
 
 activation: gelu  # Activation function (e.g., relu, gelu, etc.)
 
-distil: false  # Whether to use distillationQ
+distil: false  # Whether to use distillation
 
 lradj: "type1"  # Learning rate adjustment type (e.g., type1, type2, etc.)
 test_flop: false  # Whether to test FLOPs (Floating Point Operations per second)
-individual: false  # Whether to run individual tests
-
-# Hyperparameter tuning space
-hyperparameters:
-  learning_rate:
-    type: loguniform
-    lower_bound: 0.00001
-    upper_bound: 0.01
-  batch_size:
-    type: choice
-    choices: [16, 32, 64, 128]
-  d_model:
-    type: randint
-    lower_bound: 2
-    upper_bound: 16
-  dropout:
-    type: uniform
-    lower_bound: 0.0
-    upper_bound: 0.5
-  e_layers:
-    type: randint
-    lower_bound: 1
-    upper_bound: 4
-  d_layers:
-    type: randint
-    lower_bound: 1
-    upper_bound: 3

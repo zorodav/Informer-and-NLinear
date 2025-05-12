@@ -304,25 +304,29 @@ class Exp_Main(Exp_Basic):
         inputx = np.concatenate(inputx, axis=0)
 
                 # Reshape if arrays are 3D: convert from (batch, pred_len, features) to (features, batch * pred_len)
-        if self.args['dataset']['name'] == 'ODE_Lorenz':
+            # Replace the block that reshapes preds and trues before calling evaluate_custom with the following code:
+
+# Replace the original reshaping block (just before calling evaluate_custom) with this:
+
+        if self.args['dataset']['name'] in ['KS_Official', 'Lorenz_Official']:
+            # For KS_Official and Lorenz_Official, reshape to (timesteps, features)
+            if preds.ndim == 3:
+                preds = preds.reshape(-1, preds.shape[-1])
+            if trues.ndim == 3:
+                trues = trues.reshape(-1, trues.shape[-1])
+        elif self.args['dataset']['name'] == 'ODE_Lorenz':
             if preds.ndim == 3:
                 preds = preds.transpose(2, 0, 1).reshape(preds.shape[2], -1)
             if trues.ndim == 3:
                 trues = trues.transpose(2, 0, 1).reshape(trues.shape[2], -1)
-        
             if self.args['model']['name'] == 'NLinear':
                 preds = preds[:, :2000]
                 trues = trues[:, :2000]
-        else:
-            if self.args['dataset']['name'] == 'PDE_KS':
-                if preds.ndim == 3:
-                    preds = preds.transpose(2, 0, 1).reshape(preds.shape[2], -1)
-                if trues.ndim == 3:
-                    trues = trues.transpose(2, 0, 1).reshape(trues.shape[2], -1)
-                if trues.shape[0] != preds.shape[0]:
-                    min_features = min(trues.shape[0], preds.shape[0])
-                    trues = trues[:min_features, :]
-                    preds = preds[:min_features, :]
+        elif self.args['dataset']['name'] == 'PDE_KS':
+            if preds.ndim == 3:
+                preds = preds.reshape(-1, preds.shape[-1])
+            if trues.ndim == 3:
+                trues = trues.reshape(-1, trues.shape[-1])
 
 
         eval_results = evaluate_custom(

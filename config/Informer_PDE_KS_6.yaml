@@ -1,5 +1,5 @@
 dataset:
-  name: KS_Official
+  name: PDE_KS
   pair_id: 6          # Run on all available sub-datasets
 
 model:
@@ -9,8 +9,8 @@ model:
     dec_in: 1024
     c_out: 1024        # number of target features
     seq_len: 29
-    label_len: 29
-    pred_len: 5
+    label_len: 25
+    pred_len: 4
     factor: 5
     d_model: 4      # common embedding dimension
     n_heads: 2
@@ -47,8 +47,8 @@ freq: "t"                   # Frequency of your data (e.g., 15min, 1H, etc.)
 features: "M"               # Feature type (e.g., "M" for multivariate)
 target: "target"            # Target column name in your dataset
 seq_len: 29               # Should match model.parameters.seq_len
-label_len: 29             # Should match model.parameters.label_len
-pred_len: 5              # Should match model.parameters.pred_len
+label_len: 25             # Should match model.parameters.label_len
+pred_len: 4              # Should match model.parameters.pred_len
 embed_type: 1
 # Others
 checkpoints: "./checkpoints"

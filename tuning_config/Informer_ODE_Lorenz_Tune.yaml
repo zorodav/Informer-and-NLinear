@@ -29,8 +29,8 @@ model:
     embed_type: 1
     output_attention: false
     seq_len: 29
-    label_len: 29
-    pred_len: 10
+    label_len: 25
+    pred_len: 4
     factor: 5
     d_model: 512
     n_heads: 8
@@ -63,8 +63,8 @@ freq: "m"
 features: "M"
 target: "target"
 seq_len: 29
-label_len: 29
-pred_len: 10
+label_len: 25
+pred_len: 4
 embed_type: 1
 checkpoints: "./checkpoints"
 patience: 10

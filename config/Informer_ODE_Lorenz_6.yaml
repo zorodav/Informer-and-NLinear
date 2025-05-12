@@ -9,8 +9,8 @@ model:
     dec_in: 3              # Input dim for decoder
     c_out: 3               # Output dim
     seq_len: 29             # Input sequence length
-    label_len: 29           # Label sequence length
-    pred_len: 2            # Prediction length
+    label_len: 25           # Label sequence length
+    pred_len: 4            # Prediction length
     factor: 5               # Attention factor
     d_model: 512            # Embedding dimension
     n_heads: 8              # Number of attention heads
@@ -47,8 +47,8 @@ freq: "m"               # Frequency of your data (e.g., 15min, 1H, etc.)
 features: "M"               # Feature type (e.g., "M" for multivariate)
 target: "target"            # Target column name in your dataset
 seq_len: 29               # Should match model.parameters.seq_len
-label_len: 29             # Should match model.parameters.label_len
-pred_len: 2              # Should match model.parameters.pred_len
+label_len: 25             # Should match model.parameters.label_len
+pred_len: 4              # Should match model.parameters.pred_len
 embed_type: 1
 # Others
 checkpoints: "./checkpoints"

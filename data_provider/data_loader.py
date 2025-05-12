@@ -496,10 +496,6 @@ class PDE_KS(Dataset):
         # If you don't have time markers, create dummy ones (adjust shape if needed)
         seq_x_mark = np.zeros((seq_x.shape[0], 5))
         seq_y_mark = np.zeros((seq_y.shape[0], 5))
-        print("seq_x shape:", seq_x.shape)
-        print("seq_y shape:", seq_y.shape)
-        print("seq_x_mark shape:", seq_x_mark.shape)
-        print("seq_y_mark shape:", seq_y_mark.shape)
 
         return seq_x, seq_y, seq_x_mark, seq_y_mark
 
@@ -566,10 +562,6 @@ class KS_Official(Dataset):
         # If you don't have time markers, create dummy ones (adjust shape if needed)
         seq_x_mark = np.zeros((seq_x.shape[0], 5))
         seq_y_mark = np.zeros((seq_y.shape[0], 5))
-        print("seq_x shape:", seq_x.shape)
-        print("seq_y shape:", seq_y.shape)
-        print("seq_x_mark shape:", seq_x_mark.shape)
-        print("seq_y_mark shape:", seq_y_mark.shape)
 
         return seq_x, seq_y, seq_x_mark, seq_y_mark
 
