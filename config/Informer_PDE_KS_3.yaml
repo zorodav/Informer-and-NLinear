@@ -8,9 +8,9 @@ model:
     enc_in: 1024       # number of raw input features
     dec_in: 1024
     c_out: 1024        # number of target features
-    seq_len: 29
-    label_len: 25
-    pred_len: 4
+    seq_len: 96
+    label_len: 48
+    pred_len: 48
     factor: 5
     d_model: 4      # common embedding dimension
     n_heads: 2

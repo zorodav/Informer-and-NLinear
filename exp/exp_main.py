@@ -309,6 +309,17 @@ class Exp_Main(Exp_Basic):
 # Replace the original reshaping block (just before calling evaluate_custom) with this:
 
         if self.args['dataset']['name'] in ['KS_Official', 'Lorenz_Official']:
+            # For KS_Official and Lorenz_Official, reshape to (timesteps, features)
+            if preds.ndim == 3:
+                preds = preds.reshape(-1, preds.shape[-1])
+            if trues.ndim == 3:
+                trues = trues.reshape(-1, trues.shape[-1])
+        elif self.args['dataset']['name'] == 'ODE_Lorenz':
+            if preds.ndim == 3:
+                preds = preds.reshape(-1, preds.shape[-1])
+            if trues.ndim == 3:
+                trues = trues.reshape(-1, trues.shape[-1])
+        elif self.args['dataset']['name'] == 'PDE_KS':
             if preds.ndim == 3:
                 preds = preds.reshape(-1, preds.shape[-1])
             if trues.ndim == 3:
