@@ -8,9 +8,9 @@ model:
     enc_in: 3              # Input dim for encoder
     dec_in: 3              # Input dim for decoder
     c_out: 3               # Output dim
-    seq_len: 96             # Input sequence length
-    label_len: 48           # Label sequence length
-    pred_len: 24            # Prediction length
+    seq_len: 29             # Input sequence length
+    label_len: 25           # Label sequence length
+    pred_len: 4            # Prediction length
     factor: 5               # Attention factor
     d_model: 512            # Embedding dimension
     n_heads: 8              # Number of attention heads

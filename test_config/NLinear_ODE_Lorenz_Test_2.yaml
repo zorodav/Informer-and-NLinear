@@ -8,9 +8,9 @@ model:
     enc_in: 3              # Input dim for encoder
     dec_in: 3              # Input dim for decoder
     c_out: 3               # Output dim
-    seq_len: 96             # Input sequence length
-    label_len: 48           # Label sequence length
-    pred_len: 48            # Prediction length
+    seq_len: 29             # Input sequence length
+    label_len: 25           # Label sequence length
+    pred_len: 4            # Prediction length
     factor: 5               # Attention factor
     d_model: 512            # Embedding dimension
     n_heads: 8              # Number of attention heads
@@ -80,9 +80,9 @@ embed: timeF                # Time encoding method (e.g., timeF)
 freq: "m"               # Frequency of your data (e.g., 15min, 1H, etc.)
 features: "M"               # Feature type (e.g., "M" for multivariate)
 target: "target"            # Target column name in your dataset
-seq_len: 96               # Should match model.parameters.seq_len
-label_len: 48             # Should match model.parameters.label_len
-pred_len: 48              # Should match model.parameters.pred_len
+seq_len: 29               # Should match model.parameters.seq_len
+label_len: 25             # Should match model.parameters.label_len
+pred_len: 4              # Should match model.parameters.pred_len
 embed_type: 1
 # Others
 checkpoints: "./checkpoints"
