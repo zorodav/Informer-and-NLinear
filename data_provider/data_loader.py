@@ -14,7 +14,7 @@ import os
 import yaml
 import sys
 import os
-from ctf4science.data_module import load_dataset
+from ctf4science.data_module import load_validation_dataset, _load_test_data
 import importlib.util
 from pathlib import Path
 
@@ -297,7 +297,7 @@ class Dataset_Custom(Dataset):
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
-
+    
 class Lorenz_Official(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ODE_Lorenz',
@@ -313,14 +313,14 @@ class Lorenz_Official(Dataset):
 
         type_map = {'train': 0, 'pred': 1, 'test': 2}
         self.set_type = type_map[flag]
-
+        self.flag = flag
         self.features = features
         self.target = target
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
         self.train_only = train_only
-
+ 
         self.pair_id = pair_id
 
         self.root_path = root_path
@@ -328,26 +328,75 @@ class Lorenz_Official(Dataset):
         self.__read_data__()
 
     def __read_data__(self):
-        data, _ = load_dataset(self.data_path, self.pair_id)
-        data = data[0].reshape(-1, 3)
-        print("Data shape:", len(data))
-        num_train = int(len(data) * (0.7 if not self.train_only else 1))
-        num_test = int(len(data) * 0.2)
-        num_vali = len(data) - num_train - num_test
-        border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
-        border2s = [num_train, num_train + num_vali, len(data)]
-        border1 = border1s[self.set_type]
-        border2 = border2s[self.set_type]
+        train_data, validation_data, initialization_data = load_validation_dataset(self.data_path, self.pair_id, transpose=False)
+        
+        if self.flag == 'train':
+            data = np.vstack(train_data)
+            self.init_data = initialization_data if initialization_data is not None else None
 
-        if self.scale:
-            self.scaler = StandardScaler()
-            train_data = data[border1s[0]:border2s[0]]
-            self.scaler.fit(train_data)
-            data = np.ascontiguousarray(self.scaler.transform(data))
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
 
+            if self.scale:
+                self.scaler = StandardScaler()
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+                if self.init_data is not None:
+                    self.init_data = np.ascontiguousarray(self.scaler.transform(self.init_data))
 
-        self.data_x = data[border1:border2]
-        self.data_y = data[border1:border2]
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
+            
+        elif self.flag == 'test':
+            data = _load_test_data(self.data_path, self.pair_id, transpose=False)
+            self.init_data = None
+            
+            print("Data shape:", len(data))
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
+
+            if self.scale:
+                self.scaler = StandardScaler()
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
+            
+        elif self.flag == 'pred':
+            data = validation_data
+            self.init_data = initialization_data if initialization_data is not None else None
+            
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
+
+            if self.scale:
+                self.scaler = StandardScaler()
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+                if self.init_data is not None:
+                    self.init_data = np.ascontiguousarray(self.scaler.transform(self.init_data))
+
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
 
     def __getitem__(self, index):
         s_begin = index
@@ -356,10 +405,28 @@ class Lorenz_Official(Dataset):
         r_end = r_begin + self.label_len + self.pred_len
 
         seq_x = self.data_x[s_begin:s_end]
-        seq_y = self.data_y[r_begin:r_end]
-        # If you don't have time markers, create dummy ones (adjust shape if needed)
+        
+        if self.flag == 'test':
+            seq_y = self.data_y[r_begin:r_begin + self.label_len]
+        elif self.flag == 'pred' and self.init_data is not None:
+            label_portion = self.data_y[r_begin:r_begin + self.label_len]
+            
+            if len(self.init_data) >= self.label_len:
+                init_portion = self.init_data[:self.label_len]
+                
+                seq_y = init_portion
+                
+                extended_input = np.concatenate([init_portion, seq_x], axis=0)
+                seq_x = extended_input[-self.seq_len:] 
+                
+            else:
+                seq_y = label_portion
+        else:
+            seq_y = self.data_y[r_begin:r_end]
+        
         seq_x_mark = np.zeros((seq_x.shape[0], 1))
         seq_y_mark = np.zeros((seq_y.shape[0], 1))
+        
         return seq_x, seq_y, seq_x_mark, seq_y_mark
 
     def __len__(self):
@@ -367,11 +434,11 @@ class Lorenz_Official(Dataset):
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
-
+            
 class ODE_Lorenz(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ODE_Lorenz',
-                 target='x', scale=True, timeenc=0, freq='h', train_only=False, pair_id=1):
+                 target='x', scale=True, timeenc=0, freq='h', train_only=True, pair_id=1):
         if size is None:
             self.seq_len = 24 * 4 * 4
             self.label_len = 24 * 4
@@ -383,6 +450,7 @@ class ODE_Lorenz(Dataset):
 
         type_map = {'train': 0, 'pred': 1, 'test': 2}
         self.set_type = type_map[flag]
+        self.flag = flag
 
         self.features = features
         self.target = target
@@ -398,26 +466,76 @@ class ODE_Lorenz(Dataset):
         self.__read_data__()
 
     def __read_data__(self):
-        data, _ = load_dataset(self.data_path, self.pair_id)
-        data = data[0].reshape(-1, 3)
-        print("Data shape:", len(data))
-        num_train = int(len(data) * (0.7 if not self.train_only else 1))
-        num_test = int(len(data) * 0.2)
-        num_vali = len(data) - num_train - num_test
-        border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
-        border2s = [num_train, num_train + num_vali, len(data)]
-        border1 = border1s[self.set_type]
-        border2 = border2s[self.set_type]
+        training_data, validation_data, initialization_data = load_validation_dataset(self.data_path, self.pair_id, transpose=False)
+        print(len(training_data))
+        if self.flag == 'train':
+            data = np.vstack(training_data)
+            print(data.shape)
+            self.init_data = initialization_data if initialization_data is not None else None
+            
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
 
-        if self.scale:
-            self.scaler = StandardScaler()
-            train_data = data[border1s[0]:border2s[0]]
-            self.scaler.fit(train_data)
-            data = np.ascontiguousarray(self.scaler.transform(data))
+            if self.scale:
+                self.scaler = StandardScaler()
+                print(len(data), border1s[0], border2s[0])
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+                if self.init_data is not None:
+                    self.init_data = np.ascontiguousarray(self.scaler.transform(self.init_data))
 
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
+            
+        elif self.flag == 'test':
+            data = _load_test_data(self.data_path, self.pair_id, transpose=False)
+            self.init_data = None
+            
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
 
-        self.data_x = data[border1:border2]
-        self.data_y = data[border1:border2]
+            if self.scale:
+                self.scaler = StandardScaler()
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
+            
+        elif self.flag == 'pred':
+            data = validation_data
+            self.init_data = initialization_data if initialization_data is not None else None
+            
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
+
+            if self.scale:
+                self.scaler = StandardScaler()
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+                if self.init_data is not None:
+                    self.init_data = np.ascontiguousarray(self.scaler.transform(self.init_data))
+
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
 
     def __getitem__(self, index):
         s_begin = index
@@ -426,23 +544,40 @@ class ODE_Lorenz(Dataset):
         r_end = r_begin + self.label_len + self.pred_len
 
         seq_x = self.data_x[s_begin:s_end]
-        seq_y = self.data_y[r_begin:r_end]
-        # If you don't have time markers, create dummy ones (adjust shape if needed)
+        
+        if self.flag == 'test':
+            seq_y = self.data_y[r_begin:r_begin + self.label_len]
+        elif self.flag == 'pred' and self.init_data is not None:
+            label_portion = self.data_y[r_begin:r_begin + self.label_len]
+            
+            if len(self.init_data) >= self.label_len:
+                init_portion = self.init_data[:self.label_len]
+                seq_y = init_portion
+                
+                extended_input = np.concatenate([init_portion, seq_x], axis=0)
+                seq_x = extended_input[-self.seq_len:]
+                
+            else:
+                seq_y = label_portion
+        else:
+            seq_y = self.data_y[r_begin:r_end]
+        
         seq_x_mark = np.zeros((seq_x.shape[0], 1))
         seq_y_mark = np.zeros((seq_y.shape[0], 1))
+        
         return seq_x, seq_y, seq_x_mark, seq_y_mark
 
     def __len__(self):
+        print("Length of dataset:", len(self.data_x), self.seq_len, self.pred_len + 1, self.flag)
         return len(self.data_x) - self.seq_len - self.pred_len + 1
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
-
-
+    
 class PDE_KS(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='PDE_KS',
-                 target='u', scale=True, timeenc=0, freq='h', train_only=False, pair_id=1):
+                 target='u', scale=True, timeenc=0, freq='h', train_only=True, pair_id=1):
         if size is None:
             self.seq_len = 24 * 4 * 4
             self.label_len = 24 * 4
@@ -455,6 +590,7 @@ class PDE_KS(Dataset):
         assert flag in ['train', 'test', 'pred']
         type_map = {'train': 0, 'pred': 1, 'test': 2}
         self.set_type = type_map[flag]
+        self.flag = flag
 
         self.features = features
         self.target = target
@@ -470,20 +606,87 @@ class PDE_KS(Dataset):
         self.__read_data__()
 
     def __read_data__(self):
-        data, _ = load_dataset("PDE_KS", self.pair_id)
-        data = data[0].reshape(-1, 1024)  # Adjust reshaping based on the actual data structure
+        training_data, validation_data, initialization_data = load_validation_dataset(self.data_path, self.pair_id, transpose=False)
+        
+        if self.flag == 'train':
+            data = np.vstack(training_data)
+            if len(data.shape) > 2:
+                data = data.reshape(-1, data.shape[-1])
+            
+            self.init_data = initialization_data if initialization_data is not None else None
+            if self.init_data is not None and len(self.init_data.shape) > 2:
+                self.init_data = self.init_data.reshape(-1, self.init_data.shape[-1])
 
-        num_train = int(len(data) * (0.7 if not self.train_only else 1))
-        num_test = int(len(data) * 0.2)
-        num_vali = len(data) - num_train - num_test
-        border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
-        border2s = [num_train, num_train + num_vali, len(data)]
-        border1 = border1s[self.set_type]
-        border2 = border2s[self.set_type]
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
 
+            if self.scale:
+                self.scaler = StandardScaler()
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+                if self.init_data is not None:
+                    self.init_data = np.ascontiguousarray(self.scaler.transform(self.init_data))
 
-        self.data_x = data[border1:border2]
-        self.data_y = data[border1:border2]
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
+            
+        elif self.flag == 'test':
+            data = _load_test_data(self.data_path, self.pair_id, transpose=False)
+            self.init_data = None
+            
+            if len(data.shape) > 2:
+                data = data.reshape(-1, data.shape[-1])
+
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
+
+            if self.scale:
+                self.scaler = StandardScaler()
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
+            
+        elif self.flag == 'pred':
+            data = validation_data
+            self.init_data = initialization_data if initialization_data is not None else None
+
+            if len(data.shape) > 2:
+                data = data.reshape(-1, data.shape[-1])
+            if self.init_data is not None and len(self.init_data.shape) > 2:
+                self.init_data = self.init_data.reshape(-1, self.init_data.shape[-1])
+
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
+
+            if self.scale:
+                self.scaler = StandardScaler()
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+                if self.init_data is not None:
+                    self.init_data = np.ascontiguousarray(self.scaler.transform(self.init_data))
+
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
 
     def __getitem__(self, index):
         s_begin = index
@@ -492,8 +695,161 @@ class PDE_KS(Dataset):
         r_end = r_begin + self.label_len + self.pred_len
 
         seq_x = self.data_x[s_begin:s_end]
-        seq_y = self.data_y[r_begin:r_end]
-        # If you don't have time markers, create dummy ones (adjust shape if needed)
+        
+        if self.flag == 'test':
+            seq_y = self.data_y[r_begin:r_begin + self.label_len]
+        elif self.flag == 'pred' and self.init_data is not None:
+            label_portion = self.data_y[r_begin:r_begin + self.label_len]
+            
+            if len(self.init_data) >= self.label_len:
+                init_portion = self.init_data[:self.label_len]
+                seq_y = init_portion
+                
+                extended_input = np.concatenate([init_portion, seq_x], axis=0)
+                seq_x = extended_input[-self.seq_len:]
+                
+            else:
+                seq_y = label_portion
+        else:
+            seq_y = self.data_y[r_begin:r_end]
+        
+        seq_x_mark = np.zeros((seq_x.shape[0], 5))
+        seq_y_mark = np.zeros((seq_y.shape[0], 5))
+
+        return seq_x, seq_y, seq_x_mark, seq_y_mark
+
+    def __len__(self):
+        return len(self.data_x) - self.seq_len - self.pred_len + 1
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+                
+class KS_Official(Dataset):
+    def __init__(self, root_path, flag='train', size=None,
+                 features='S', data_path='PDE_KS',
+                 target='u', scale=True, timeenc=0, freq='h', train_only=True, pair_id=1):
+        if size is None:
+            self.seq_len = 24 * 4 * 4
+            self.label_len = 24 * 4
+            self.pred_len = 24 * 4
+        else:
+            self.seq_len = size[0]
+            self.label_len = size[1]
+            self.pred_len = size[2]
+
+        assert flag in ['train', 'test', 'pred']
+        type_map = {'train': 0, 'pred': 1, 'test': 2}
+        self.set_type = type_map[flag]
+        self.flag = flag
+
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+        self.train_only = train_only
+
+        self.pair_id = pair_id
+
+        self.root_path = root_path
+        self.data_path = data_path
+        self.__read_data__()
+
+    def __read_data__(self):
+        training_data, validation_data, initialization_data = load_validation_dataset(self.data_path, self.pair_id, transpose=False)
+        
+        if self.flag == 'train':
+            data = np.vstack(training_data)
+            self.init_data = initialization_data if initialization_data is not None else None
+
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
+
+            if self.scale:
+                self.scaler = StandardScaler()
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+                if self.init_data is not None:
+                    self.init_data = np.ascontiguousarray(self.scaler.transform(self.init_data))
+
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
+            
+        elif self.flag == 'test':
+            data = _load_test_data(self.data_path, self.pair_id, transpose=False)
+            self.init_data = None
+
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
+
+            if self.scale:
+                self.scaler = StandardScaler()
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
+            
+        elif self.flag == 'pred':
+            data = validation_data
+            self.init_data = initialization_data if initialization_data is not None else None
+
+            num_train = int(len(data) * (0.7 if not self.train_only else 1))
+            num_test = int(len(data) * 0.2)
+            num_vali = len(data) - num_train - num_test
+            border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
+            border2s = [num_train, num_train + num_vali, len(data)]
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
+
+            if self.scale:
+                self.scaler = StandardScaler()
+                train_data = data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data)
+                data = np.ascontiguousarray(self.scaler.transform(data))
+                if self.init_data is not None:
+                    self.init_data = np.ascontiguousarray(self.scaler.transform(self.init_data))
+
+            self.data_x = data[border1:border2]
+            self.data_y = data[border1:border2]
+
+    def __getitem__(self, index):
+        s_begin = index
+        s_end = s_begin + self.seq_len
+        r_begin = s_end - self.label_len
+        r_end = r_begin + self.label_len + self.pred_len
+
+        seq_x = self.data_x[s_begin:s_end]
+        
+        if self.flag == 'test':
+            seq_y = self.data_y[r_begin:r_begin + self.label_len]
+        elif self.flag == 'pred' and self.init_data is not None:
+            label_portion = self.data_y[r_begin:r_begin + self.label_len]
+            
+            if len(self.init_data) >= self.label_len:
+                init_portion = self.init_data[:self.label_len]
+                seq_y = init_portion
+                
+                extended_input = np.concatenate([init_portion, seq_x], axis=0)
+                seq_x = extended_input[-self.seq_len:]
+                
+            else:
+                seq_y = label_portion
+        else:
+            seq_y = self.data_y[r_begin:r_end]
+        
         seq_x_mark = np.zeros((seq_x.shape[0], 5))
         seq_y_mark = np.zeros((seq_y.shape[0], 5))
 
@@ -505,73 +861,6 @@ class PDE_KS(Dataset):
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
     
-class KS_Official(Dataset):
-    def __init__(self, root_path, flag='train', size=None,
-                 features='S', data_path='PDE_KS',
-                 target='u', scale=True, timeenc=0, freq='h', train_only=False, pair_id=1):
-        if size is None:
-            self.seq_len = 24 * 4 * 4
-            self.label_len = 24 * 4
-            self.pred_len = 24 * 4
-        else:
-            self.seq_len = size[0]
-            self.label_len = size[1]
-            self.pred_len = size[2]
-
-        assert flag in ['train', 'test', 'pred']
-        type_map = {'train': 0, 'pred': 1, 'test': 2}
-        self.set_type = type_map[flag]
-
-        self.features = features
-        self.target = target
-        self.scale = scale
-        self.timeenc = timeenc
-        self.freq = freq
-        self.train_only = train_only
-
-        self.pair_id = pair_id
-
-        self.root_path = root_path
-        self.data_path = data_path
-        self.__read_data__()
-
-    def __read_data__(self):
-        data, _ = load_dataset("PDE_KS", self.pair_id)
-        data = data[0].reshape(-1, 1024)  # Adjust reshaping based on the actual data structure
-
-        num_train = int(len(data) * (0.7 if not self.train_only else 1))
-        num_test = int(len(data) * 0.2)
-        num_vali = len(data) - num_train - num_test
-        border1s = [0, num_train - self.seq_len, len(data) - num_test - self.seq_len]
-        border2s = [num_train, num_train + num_vali, len(data)]
-        border1 = border1s[self.set_type]
-        border2 = border2s[self.set_type]
-
-
-        self.data_x = data[border1:border2]
-        self.data_y = data[border1:border2]
-
-    def __getitem__(self, index):
-        s_begin = index
-        s_end = s_begin + self.seq_len
-        r_begin = s_end - self.label_len
-        r_end = r_begin + self.label_len + self.pred_len
-
-        seq_x = self.data_x[s_begin:s_end]
-        seq_y = self.data_y[r_begin:r_end]
-        # If you don't have time markers, create dummy ones (adjust shape if needed)
-        seq_x_mark = np.zeros((seq_x.shape[0], 5))
-        seq_y_mark = np.zeros((seq_y.shape[0], 5))
-
-        return seq_x, seq_y, seq_x_mark, seq_y_mark
-
-    def __len__(self):
-        return len(self.data_x) - self.seq_len - self.pred_len + 1
-
-    def inverse_transform(self, data):
-        return self.scaler.inverse_transform(data)
-
-
 class Dataset_Pred(Dataset):
     def __init__(self, root_path, flag='pred', size=None,
                  features='S', data_path='ETTh1.csv',

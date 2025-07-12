@@ -84,20 +84,20 @@ class Exp_Main(Exp_Basic):
                 if self.args['use_amp']:
                     with torch.amp.autocast('cuda'):
                         if 'Linear' in self.args['model']['name']:
-                            outputs = self.model(batch_x)
+                            outputs = self.model(batch_x, autoregressive=True)
                         else:
                             if self.args['output_attention']:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, autoregressive=True)[0]
                             else:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, autoregressive=True)
                 else:
                     if 'Linear' in self.args['model']['name']:
-                        outputs = self.model(batch_x)
+                        outputs = self.model(batch_x, autoregressive=True)
                     else:
                         if self.args['output_attention']:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, autoregressive=True)[0]
                         else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, autoregressive=True)
                 f_dim = -1 if self.args['features'] == 'MS' else 0
                 outputs = outputs[:, -self.args['pred_len']:, f_dim:]
                 batch_y = batch_y[:, -self.args['pred_len']:, f_dim:]
@@ -177,11 +177,9 @@ class Exp_Main(Exp_Basic):
                             outputs = self.model(batch_x)
                     else:
                         if self.args['output_attention']:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                            
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]       
                         else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, batch_y)
-                    # print(outputs.shape,batch_y.shape)
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                     f_dim = -1 if self.args['features'] == 'MS' else 0
                     outputs = outputs[:, -self.args['pred_len']:, f_dim:]
                     batch_y = batch_y[:, -self.args['pred_len']:, f_dim:]
@@ -230,126 +228,82 @@ class Exp_Main(Exp_Basic):
         return self.model
 
     def test(self, setting, test=0):
-        test_data, test_loader = self._get_data(flag='test')
+        pred_data, pred_loader = self._get_data(flag='pred') 
         
         if test:
             print('loading model')
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
 
-        preds = []
-        trues = []
-        inputx = []
-        folder_path = './test_results/' + setting + '/'
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-
+        next_step_preds = []
+        
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(pred_loader):
                 batch_x = batch_x.float()
                 batch_y = batch_y.float()
-
                 batch_x_mark = batch_x_mark.float()
                 batch_y_mark = batch_y_mark.float()
 
-                # decoder input
-                dec_inp = torch.zeros_like(batch_y[:, -self.args['pred_len']:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args['label_len'], :], dec_inp], dim=1).float()
-                # encoder - decoder
-                if self.args['use_amp']:
-                    with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args['model']['name']:
-                            outputs = self.model(batch_x)
-                        else:
-                            if self.args['output_attention']:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                            else:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                else:
+                if hasattr(batch_y, 'shape') and batch_y.shape[1] >= self.args['label_len']:
+                    init_context = batch_y[:, :self.args['label_len'], :]
+                    dec_inp = torch.zeros([batch_x.shape[0], 1, batch_x.shape[2]]).float()
+                    dec_inp = torch.cat([init_context, dec_inp], dim=1).float()
+                    dec_mark = batch_y_mark[:, :self.args['label_len'] + 1, :]
+                    
                     if 'Linear' in self.args['model']['name']:
-                            outputs = self.model(batch_x)
+                        full_input = torch.cat([batch_x, init_context], dim=1)
+                        input_seq = full_input[:, -self.args['seq_len']:, :]
+                    else:
+                        input_seq = batch_x
+                else:
+                    dec_inp = torch.zeros([batch_x.shape[0], 1, batch_x.shape[2]]).float()
+                    dec_inp = torch.cat([batch_x[:, -self.args['label_len']:, :], dec_inp], dim=1).float()
+                    dec_mark = batch_x_mark[:, -self.args['label_len']:, :]
+                    input_seq = batch_x
+                
+                if 'Linear' in self.args['model']['name']:
+                    if self.args['use_amp']:
+                        with torch.cuda.amp.autocast():
+                            outputs = self.model(input_seq, autoregressive=False)
+                    else:
+                        outputs = self.model(input_seq, autoregressive=False)
+                    next_step_pred = outputs[:, 0, :]
+                else:
+                    if self.args['use_amp']:
+                        with torch.cuda.amp.autocast():
+                            if self.args['output_attention']:
+                                outputs = self.model(input_seq, batch_x_mark, dec_inp, dec_mark, autoregressive=False)[0]
+                            else:
+                                outputs = self.model(input_seq, batch_x_mark, dec_inp, dec_mark, autoregressive=False)
                     else:
                         if self.args['output_attention']:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-
+                            outputs = self.model(input_seq, batch_x_mark, dec_inp, dec_mark, autoregressive=False)[0]
                         else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            outputs = self.model(input_seq, batch_x_mark, dec_inp, dec_mark, autoregressive=False)
+                    next_step_pred = outputs[:, -1, :]
 
                 f_dim = -1 if self.args['features'] == 'MS' else 0
-                # print(outputs.shape,batch_y.shape)
-                outputs = outputs[:, -self.args['pred_len']:, f_dim:]
-                batch_y = batch_y[:, -self.args['pred_len']:, f_dim:]
-                outputs = outputs.detach().cpu().numpy()
-                batch_y = batch_y.detach().cpu().numpy()
+                pred = next_step_pred[:, f_dim:].detach().cpu().numpy()
+                next_step_preds.append(pred)
 
-                pred = outputs
-                true = batch_y
+        preds = np.concatenate(next_step_preds, axis=0)
+        
+        if hasattr(pred_data, 'scaler') and pred_data.scaler is not None:
+            preds = pred_data.scaler.inverse_transform(preds)
 
-                preds.append(pred)
-                trues.append(true)
-                inputx.append(batch_x.detach().cpu().numpy())
-                if i % 20 == 0:
-                    input = batch_x.detach().cpu().numpy()
-                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
+        if self.args['dataset']['name'] in ['KS_Official', 'Lorenz_Official', 'ODE_Lorenz', 'PDE_KS']:
+            if preds.shape[0] > 1:
+                preds = preds[0]
+                preds = preds.T
 
-        if self.args['test_flop']:
-            test_params_flop((batch_x.shape[1], batch_x.shape[2]))
-            exit()
-            
-        # Concatenate predictions and ground truth arrays
-        preds = np.concatenate(preds, axis=0)
-        trues = np.concatenate(trues, axis=0)
-        inputx = np.concatenate(inputx, axis=0)
-
-                # Reshape if arrays are 3D: convert from (batch, pred_len, features) to (features, batch * pred_len)
-            # Replace the block that reshapes preds and trues before calling evaluate_custom with the following code:
-
-# Replace the original reshaping block (just before calling evaluate_custom) with this:
-
-        if self.args['dataset']['name'] in ['KS_Official', 'Lorenz_Official']:
-            # For KS_Official and Lorenz_Official, reshape to (timesteps, features)
-            if preds.ndim == 3:
-                preds = preds.reshape(-1, preds.shape[-1])
-            if trues.ndim == 3:
-                trues = trues.reshape(-1, trues.shape[-1])
-        elif self.args['dataset']['name'] == 'ODE_Lorenz':
-            if preds.ndim == 3:
-                preds = preds.reshape(-1, preds.shape[-1])
-            if trues.ndim == 3:
-                trues = trues.reshape(-1, trues.shape[-1])
-        elif self.args['dataset']['name'] == 'PDE_KS':
-            if preds.ndim == 3:
-                preds = preds.reshape(-1, preds.shape[-1])
-            if trues.ndim == 3:
-                trues = trues.reshape(-1, trues.shape[-1])
-
-
-        eval_results = evaluate_custom(
+        eval_results = evaluate(
             dataset_name=self.args['dataset']['name'],
             pair_id=self.args['dataset']['pair_id'],
-            truth=trues,
             prediction=preds,
             metrics=self.args.get('evaluation_metrics', None)
         )
         print("Evaluation results:", eval_results)
-
-        # Save results
-        folder_path = './results/' + setting + '/'
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-
-        mae, mse, rmse, mape, mspe, rse, corr = metric(preds, trues)
-        print('mse:{}, mae:{}'.format(mse, mae))
-        f = open("result.txt", 'a')
-        f.write(setting + "  \n")
-        f.write('mse:{}, mae:{}, rse:{}, corr:{}'.format(mse, mae, rse, corr))
-        f.write('\n')
-        f.write('\n')
-        f.close()
-
-        np.savetxt(folder_path + 'predicted.txt', preds)
+        
         return
 
     def predict(self, setting, load=False):
@@ -370,55 +324,47 @@ class Exp_Main(Exp_Basic):
                 batch_x_mark = batch_x_mark.float()
                 batch_y_mark = batch_y_mark.float()
 
-                # decoder input
                 dec_inp = torch.zeros([batch_y.shape[0], self.args['pred_len'], batch_y.shape[2]]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args['label_len'], :], dec_inp], dim=1).float()
-                # encoder-decoder
+                
+                if 'Linear' in self.args['model']['name']:
+                    full_context = torch.cat([batch_x, batch_y[:, :self.args['label_len'], :]], dim=1)
+                    input_seq = full_context[:, -self.args['seq_len']:, :]
+                else:
+                    input_seq = batch_x
+                
                 if self.args['use_amp']:
                     with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args['model']:
-                            outputs = self.model(batch_x)
+                        if 'Linear' in self.args['model']['name']:
+                            outputs = self.model(input_seq, autoregressive=True)
                         else:
                             if self.args['output_attention']:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                                outputs = self.model(input_seq, batch_x_mark, dec_inp, batch_y_mark, autoregressive=True)[0]
                             else:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                                outputs = self.model(input_seq, batch_x_mark, dec_inp, batch_y_mark, autoregressive=True)
                 else:
-                    if 'Linear' in self.args['model']:
-                        outputs = self.model(batch_x)
+                    if 'Linear' in self.args['model']['name']:
+                        outputs = self.model(input_seq, autoregressive=True)  
                     else:
                         if self.args['output_attention']:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                            outputs = self.model(input_seq, batch_x_mark, dec_inp, batch_y_mark, autoregressive=True)[0]
                         else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            outputs = self.model(input_seq, batch_x_mark, dec_inp, batch_y_mark, autoregressive=True)
+                
                 pred = outputs.detach().cpu().numpy()
                 preds.append(pred)
 
         preds = np.array(preds)
-        # After concatenating, squeeze out the extra dimension; now shape becomes (177, 24, 3)
-        preds = np.squeeze(preds, axis=1)  # current shape: (177, 24, 3)
+        preds = np.squeeze(preds, axis=1)
 
-        # Insert the code to select a single prediction window if necessary:
         if preds.shape[0] > 1:
-            # If predictions is (177, T, D) but you need a single window,
-            # select the first prediction and transpose if necessary.
-            preds = preds[0]      # shape becomes (24, 3)
-            preds = preds.T       # shape becomes (3, 24), which should match the truth's shape
+            preds = preds[0]
+            preds = preds.T
 
-        # Now the predictions are 2D. We then set up for inverse transform:
-        N, T = preds.shape    # N is number of features, T is number of time steps
-        preds_2d = preds      # Already 2D, so no further reshaping is needed
-
-        # Apply inverse transform on 2D array using the scaler in pred_data:
+        N, T = preds.shape
+        preds_2d = preds
         preds_transformed = pred_data.scaler.inverse_transform(preds_2d)
-
-        # If needed, you can reshape preds_transformed back to the expected shape.
-        # For example, if the evaluation expects a 3D array, you may do:
-        # preds = preds_transformed.reshape(1, T, N)
-        # Otherwise, if the evaluation expects (D, T) simply assign:
-        preds = preds_transformed        # --- Use the eval_module here ---
-        # We assume eval_config takes (dataset, predictions) and returns evaluation metrics.
-        # filepath: ...\exp_main.py (inside your predict or test method)
+        preds = preds_transformed
 
         eval_results = evaluate(
             dataset_name=self.args['dataset']['name'],
@@ -427,9 +373,7 @@ class Exp_Main(Exp_Basic):
             metrics=self.args.get('evaluation_metrics', None)
         )
         print("Evaluation results:", eval_results)
-        # ----------------------------------
 
-        # Save the results
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
@@ -438,4 +382,4 @@ class Exp_Main(Exp_Basic):
         pd.DataFrame(np.append(np.transpose([pred_data.future_dates]), preds[0], axis=1),
                     columns=pred_data.cols).to_csv(os.path.join(folder_path, 'real_prediction.csv'), index=False)
 
-        return
+        return 
